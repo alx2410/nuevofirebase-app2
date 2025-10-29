@@ -1,73 +1,94 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './App.css'
 import { db } from './lib/firebase'
-import { collection, onSnapshot, query, addDoc } from 'firebase/firestore'
+import { collection, onSnapshot, query, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore'
 
 function App() {
-  //Variable para guardar los post
-  const [post, setPost] = useState([])
-  const [texto, setTexto] =useState("")
+  const [posts, setPosts] = useState([])
+  const [texto, setTexto] = useState("")
+  const [editId, setEditId] = useState(null)
+  const inputRef = useRef(null)
 
+  // Escuchar posts en tiempo real
   useEffect(() => {
-    // Creamos una consulta
-    const consulta = query(collection(db, "post"));
-
-    // Escuchamos los cambios en tiempo real
-    const unsubscribe = onSnapshot(consulta, (snapshot) => {
-      const docs = snapshot.docs.map((doc) => ({
+    const q = query(collection(db, "post"))
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({
         id: doc.id,
-        ...doc.data(),
-      }));
-      //Actualizar post
-      setPost(docs)
+        ...doc.data()
+      }))
+      setPosts(docs)
     })
+    return () => unsubscribe()
+  }, [])
 
-    //Limpar unsubscribe
-      return () => unsubscribe()
-    }, [])
+  // Guardar o editar post
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!texto.trim()) return
 
-    //Agregar Post
-    // 👉 Función para agregar un mensaje
-  const agregarPost = async () => {
-    //if (!texto.trim()) return alert("no hay mensaje que enviar") // evitar vacíos
-    await addDoc(collection(db, "post"), {
-      mensaje: texto,
-      createdAt: new Date(), // fecha actual
-    })
+    const mensaje = texto
+    setTexto("") // limpiar input inmediatamente
+    inputRef.current.focus()
 
-    setTexto("") // limpiar input
+    if (editId) {
+      const postRef = doc(db, "post", editId)
+      await updateDoc(postRef, { mensaje })
+      setEditId(null)
+    } else {
+      await addDoc(collection(db, "post"), {
+        mensaje,
+        createdAt: new Date()
+      })
+    }
   }
-  
-    return (
-    <>
-      <div>Post</div>
-      {/* 🆕 Input para escribir mensaje */}
-      {/* onKeyDown={(e) => e.key === "Enter" && agregarPost()} */}
-      <input
-        className='border p-2 me-2'
-        type="text"
-        placeholder="Escribe tu mensaje"
-        value={texto}
-        onChange={(e) => setTexto(e.target.value)}
-      />
-      <button
-        className='bg-blue-5000 text-white px-3 py-2 rounded'
-        onClick={agregarPost}
-      >
-        Guardar
-      </button>
 
+  // Activar modo edición
+  const editarPost = (post) => {
+    setTexto(post.mensaje)
+    setEditId(post.id)
+    inputRef.current.focus()
+  }
 
-      <ul>
-        {
-          post.map((doc) => (
-            <li key={doc.id}>{doc.mensaje} - {doc.autor} - {doc.Autor}</li>
-          ))
-        }
+  // Borrar post
+  const borrarPost = async (id) => {
+    const postRef = doc(db, "post", id)
+    await deleteDoc(postRef)
+  }
+
+  return (
+    <div className="min-h-screen bg-pink-50 flex flex-col items-center p-6 font-sans">
+      <h1 className="text-3xl font-bold mb-4 text-purple-300">Posts</h1>
+
+      <form onSubmit={handleSubmit} className="flex mb-6 w-full max-w-md">
+        <input
+          ref={inputRef}
+          className="flex-1 border border-purple-100 rounded-l px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-200"
+          type="text"
+          placeholder="Escribe tu mensaje"
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+        />
+        <button
+          type="submit"
+          className="bg-purple-300 text-black px-4 py-2 rounded-r hover:bg-purple-400 transition"
+        >
+          {editId ? "Editar" : "Guardar"}
+        </button>
+      </form>
+
+      <ul className="w-full max-w-md space-y-3">
+        {posts.map((post) => (
+          <li key={post.id} className="bg-purple-100 p-4 rounded flex justify-between items-center">
+            <span className="text-purple-800">{post.mensaje}</span>
+            <div className="flex space-x-2">
+              <button onClick={() => editarPost(post)} className="hover:text-blue-600">✏️</button>
+              <button onClick={() => borrarPost(post.id)} className="hover:text-red-600">🗑️</button>
+            </div>
+          </li>
+        ))}
       </ul>
-
-
-    </>
+    </div>
   )
 }
 
